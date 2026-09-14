@@ -1,0 +1,7 @@
+# 测试专用：内存 H2，避免 10 万/30 万量级压测数据写入文件库
+spring:
+  datasource:
+    url: jdbc:h2:mem:evops-test;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver

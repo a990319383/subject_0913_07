@@ -10,6 +10,8 @@ import com.evops.entity.TvacArticle;
 import com.evops.entity.TvacPlan;
 import com.evops.mapper.TvacArticleMapper;
 import com.evops.mapper.TvacPlanMapper;
+import com.evops.security.CurrentUser;
+import com.evops.security.DataPermissionService;
 import com.evops.vo.ArticleBatchVo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +26,26 @@ public class TvacArticleService {
 
     private final TvacArticleMapper articleMapper;
     private final TvacPlanMapper planMapper;
+    private final DataPermissionService permissionService;
 
-    public TvacArticleService(TvacArticleMapper articleMapper, TvacPlanMapper planMapper) {
+    public TvacArticleService(TvacArticleMapper articleMapper, TvacPlanMapper planMapper,
+                              DataPermissionService permissionService) {
         this.articleMapper = articleMapper;
         this.planMapper = planMapper;
+        this.permissionService = permissionService;
+    }
+
+    /**
+     * 解析新建试验件的归属租户：
+     * 系统账号可显式指定 tenantId（不传则为平台数据）；租户账号一律强制归属本租户，
+     * 请求体中的 tenantId 不被信任（越权指定直接忽略）。
+     */
+    private Long resolveTenantId(Long requested) {
+        CurrentUser cu = permissionService.requireCurrentUser();
+        if (cu.isSystem()) {
+            return requested;
+        }
+        return cu.getTenantId();
     }
 
     /** 单件建档 */
@@ -37,6 +55,7 @@ public class TvacArticleService {
         article.setArticleName(req.getArticleName());
         article.setTargetModel(req.getTargetModel());
         article.setBatchNo(req.getBatchNo());
+        article.setTenantId(resolveTenantId(req.getTenantId()));
         article.setStatus(TvacConst.ArticleStatus.REGISTERED);
         article.setRemark(req.getRemark());
         articleMapper.insert(article);
@@ -52,6 +71,7 @@ public class TvacArticleService {
                 throw BusinessException.of("批次内试验件编号重复: " + item.getArticleCode());
             }
         }
+        Long tenantId = resolveTenantId(req.getTenantId());
         List<TvacArticle> saved = new java.util.ArrayList<>();
         for (ArticleBatchCreateRequest.Item item : req.getArticles()) {
             TvacArticle article = new TvacArticle();
@@ -59,6 +79,7 @@ public class TvacArticleService {
             article.setArticleName(item.getArticleName());
             article.setTargetModel(req.getTargetModel());
             article.setBatchNo(req.getBatchNo());
+            article.setTenantId(tenantId);
             article.setStatus(TvacConst.ArticleStatus.REGISTERED);
             article.setRemark(item.getRemark());
             articleMapper.insert(article);

@@ -20,6 +20,8 @@ public class TvacArticle extends BaseEntity {
     private String targetModel;
     /** 批次号 */
     private String batchNo;
+    /** 所属租户（为空表示平台/历史遗留数据，仅系统角色可见） */
+    private Long tenantId;
     /** 状态：REGISTERED/IN_TEST/COMPLETED/SCRAPPED */
     private String status;
     private String remark;

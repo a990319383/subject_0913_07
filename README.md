@@ -60,3 +60,42 @@
 
 测试：`mvn test` 运行 `TvacWorkflowIntegrationTest`（事务自动回滚，不污染文件库）。
 
+## 多租户运营检索与遥测分区聚合（tvac-2）
+
+数据权限模型（`t_tvac_tenant` / `t_tvac_user` / `t_tvac_user_grant`）：
+
+- `bootstrap`（system 角色）：平台账号，跨租户可见，可开通租户/账号；
+- `TENANT_ADMIN`：租户管理员，可见本租户全部试验件（含计划/曲线/帧/报告）；
+- `TENANT_VIEWER`：租户普通账号，只能看到 `t_tvac_user_grant` 显式授权的试验件；
+  即使被写入跨租户授权行，租户条件仍强制生效。
+- HTTP Basic 为无状态认证（Shiro `sessionStorageEnabled=false`），不创建容器会话。
+- 租户账号新建试验件自动归属本租户；系统账号可用请求体 `tenantId` 指定归属。
+
+运营检索 `POST /api/tvac/operation/search`（请求体 JSON）：
+
+- `objectType`：`ARTICLE`（默认，主表 t_tvac_article）或 `PLAN`（主表 t_tvac_plan）；
+- 条件全部 AND 叠加：试验件编号/名称(模糊)/型号/批次/状态、计划编号/名称/状态、
+  建档日期区间 `createTimeFrom/To`、计划日期区间 `planTimeFrom/To`、
+  温压曲线区间 `tempFromC/To`、`pressureFromPa/To` + `curveCycleNo`
+  （同一曲线点同时落入温/压区间，属满足全部计划条件的计划）；
+- 分页：`pageNum/pageSize`（pageSize 强制 1–100）或 `cursor`（keyset 游标，
+  翻页须携带相同过滤条件）；排序固定 `create_time DESC, id DESC`，
+  主键补齐保证时间并列时确定性、可重复；
+- 返回 `records / total / pageNum / pageSize / hasNext / nextCursor`；
+  `total` 为去重后的主记录数。
+- 防放大：计划、曲线、通道等一对多关联全部以 `EXISTS` 半连接或标量子查询下推，
+  主记录在计数与分页中均不重复；每条 SQL 都内联租户+角色数据权限条件。
+
+遥测分区聚合 `GET /api/tvac/operation/tm-stats`：
+
+- 直接在 `t_tvac_tm_frame` 上按 `article_id` 分区 GROUP BY，返回每试验件的
+  计划数/通道数/最大循环号/帧数/异常帧数/工程值极值；
+- `measureType/channelId` 等通道维度过滤走 `EXISTS`/帧表自身列，帧数不被通道关联放大；
+- 支持 `cycleFrom/cycleTo`、`limitFlag` 与租户数据范围，pageSize 同样 1–100。
+- 已在 300,000 帧 / 1,000 循环与 100,000 试验件+事件数据上完成压测
+  （`OperationStressTest`，独立内存库）。
+
+租户开通接口（仅 bootstrap 可写租户/账号）：
+`POST /api/tvac/tenancy/tenants`、`POST /api/tvac/tenancy/users`、
+`POST /api/tvac/tenancy/grants`、`GET /api/tvac/tenancy/users/{userId}/grants`。
+

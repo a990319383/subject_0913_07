@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.evops.mapper.OperationQueryMapper">
+
+    <!--
+      数据权限片段（每条运营 SQL 必带）：
+      system 跨租户；TENANT_ADMIN 限本租户；TENANT_VIEWER 限显式授权试验件。
+      授权以 EXISTS 半连接下推，授权表一对多不会在主表产生重复行。
+    -->
+    <sql id="dataScope">
+        <if test="!cu.system and cu.tenantAdmin">
+            AND a.tenant_id = #{cu.tenantId}
+        </if>
+        <if test="!cu.system and !cu.tenantAdmin">
+            AND a.tenant_id = #{cu.tenantId}
+            AND EXISTS (SELECT 1 FROM t_tvac_user_grant g
+                        WHERE g.user_id = #{cu.userId}
+                          AND g.object_type = 'ARTICLE'
+                          AND g.article_id = a.id)
+        </if>
+    </sql>
+
+    <!-- 计划维度的组合条件（试验件检索时整体作为 EXISTS 半连接体） -->
+    <sql id="planMatch">
+        <if test="q.planId != null">AND p.id = #{q.planId}</if>
+        <if test="q.planCode != null and q.planCode != ''">
+            AND p.plan_code = #{q.planCode}
+        </if>
+        <if test="q.planName != null and q.planName != ''">
+            AND p.plan_name LIKE CONCAT('%', #{q.planName}, '%')
+        </if>
+        <if test="q.planStatus != null and q.planStatus != ''">
+            AND p.status = #{q.planStatus}
+        </if>
+        <if test="q.planTimeFrom != null">
+            AND p.plan_start_time &gt;= #{q.planTimeFrom}
+        </if>
+        <if test="q.planTimeTo != null">
+            AND p.plan_start_time &lt;= #{q.planTimeTo}
+        </if>
+    </sql>
+
+    <!--
+      ============ 试验件检索：主表 t_tvac_article（别名 a） ============
+      计划/曲线等一对多关联全部用 EXISTS 半连接，结构上保证主记录不被放大。
+    -->
+    <sql id="articleConditions">
+        <include refid="dataScope"/>
+        <if test="q.articleId != null">AND a.id = #{q.articleId}</if>
+        <if test="q.articleCode != null and q.articleCode != ''">
+            AND a.article_code = #{q.articleCode}
+        </if>
+        <if test="q.articleName != null and q.articleName != ''">
+            AND a.article_name LIKE CONCAT('%', #{q.articleName}, '%')
+        </if>
+        <if test="q.targetModel != null and q.targetModel != ''">
+            AND a.target_model = #{q.targetModel}
+        </if>
+        <if test="q.batchNo != null and q.batchNo != ''">
+            AND a.batch_no = #{q.batchNo}
+        </if>
+        <if test="q.articleStatus != null and q.articleStatus != ''">
+            AND a.status = #{q.articleStatus}
+        </if>
+        <if test="q.createTimeFrom != null">AND a.create_time &gt;= #{q.createTimeFrom}</if>
+        <if test="q.createTimeTo != null">AND a.create_time &lt;= #{q.createTimeTo}</if>
+        <!-- 计划维度条件：EXISTS 半连接，一件多计划不会产生多行 -->
+        <if test="(q.planId != null) or (q.planCode != null and q.planCode != '')
+              or (q.planName != null and q.planName != '')
+              or (q.planStatus != null and q.planStatus != '')
+              or (q.planTimeFrom != null) or (q.planTimeTo != null)">
+            AND EXISTS (SELECT 1 FROM t_tvac_plan p
+                        WHERE p.article_id = a.id
+                        <include refid="planMatch"/>)
+        </if>
+        <!--
+          温压曲线组合：同一曲线点同时落入温/压区间（AND/范围组合）；
+          若同时给了计划条件，则该点必须属于满足条件的计划（嵌套 EXISTS）。
+        -->
+        <if test="(q.tempFromC != null) or (q.tempToC != null)
+              or (q.pressureFromPa != null) or (q.pressureToPa != null)
+              or (q.curveCycleNo != null)">
+            AND EXISTS (SELECT 1 FROM t_tvac_curve_point c
+                        WHERE c.article_id = a.id
+                        <if test="q.curveCycleNo != null">
+                            AND c.cycle_no = #{q.curveCycleNo}
+                        </if>
+                        <if test="q.tempFromC != null">
+                            AND c.temperature_c &gt;= #{q.tempFromC}
+                        </if>
+                        <if test="q.tempToC != null">
+                            AND c.temperature_c &lt;= #{q.tempToC}
+                        </if>
+                        <if test="q.pressureFromPa != null">
+                            AND c.pressure_pa &gt;= #{q.pressureFromPa}
+                        </if>
+                        <if test="q.pressureToPa != null">
+                            AND c.pressure_pa &lt;= #{q.pressureToPa}
+                        </if>
+                        <if test="(q.planId != null) or (q.planCode != null and q.planCode != '')
+                              or (q.planName != null and q.planName != '')
+                              or (q.planStatus != null and q.planStatus != '')
+                              or (q.planTimeFrom != null) or (q.planTimeTo != null)">
+                            AND EXISTS (SELECT 1 FROM t_tvac_plan p2
+                                        WHERE p2.id = c.plan_id
+                                        <if test="q.planId != null">AND p2.id = #{q.planId}</if>
+                                        <if test="q.planCode != null and q.planCode != ''">
+                                            AND p2.plan_code = #{q.planCode}
+                                        </if>
+                                        <if test="q.planName != null and q.planName != ''">
+                                            AND p2.plan_name LIKE CONCAT('%', #{q.planName}, '%')
+                                        </if>
+                                        <if test="q.planStatus != null and q.planStatus != ''">
+                                            AND p2.status = #{q.planStatus}
+                                        </if>
+                                        <if test="q.planTimeFrom != null">
+                                            AND p2.plan_start_time &gt;= #{q.planTimeFrom}
+                                        </if>
+                                        <if test="q.planTimeTo != null">
+                                            AND p2.plan_start_time &lt;= #{q.planTimeTo}
+                                        </if>)
+                        </if>)
+        </if>
+    </sql>
+
+    <select id="countArticles" resultType="long">
+        SELECT COUNT(*) FROM t_tvac_article a
+        <where><include refid="articleConditions"/></where>
+    </select>
+
+    <select id="pageArticles" resultType="com.evops.vo.OperationSearchItemVo">
+        SELECT 'ARTICLE' AS object_type,
+               a.id, a.article_code AS code, a.article_name AS name, a.status,
+               a.tenant_id, a.create_time,
+               a.id AS article_id, a.article_code, a.article_name,
+               a.target_model, a.batch_no, a.status AS article_status,
+               CAST(NULL AS BIGINT) AS plan_id,
+               CAST(NULL AS VARCHAR) AS plan_code,
+               CAST(NULL AS VARCHAR) AS plan_name,
+               CAST(NULL AS VARCHAR) AS plan_status,
+               CAST(NULL AS TIMESTAMP) AS plan_start_time,
+               CAST(NULL AS TIMESTAMP) AS plan_end_time,
+               CAST(NULL AS INT) AS target_cycles,
+               (SELECT COUNT(*) FROM t_tvac_plan p WHERE p.article_id = a.id) AS plan_count,
+               (SELECT COUNT(*) FROM t_tvac_curve_point c WHERE c.article_id = a.id) AS curve_point_count,
+               (SELECT COUNT(*) FROM t_tvac_tm_frame f WHERE f.article_id = a.id) AS frame_count,
+               (SELECT COUNT(*) FROM t_tvac_tm_frame f
+                 WHERE f.article_id = a.id AND f.limit_flag &lt;&gt; 'NORMAL') AS abnormal_frame_count
+        FROM t_tvac_article a
+        <where>
+            <include refid="articleConditions"/>
+            <if test="q.cursorTime != null">
+                AND (a.create_time &lt; #{q.cursorTime}
+                     OR (a.create_time = #{q.cursorTime} AND a.id &lt; #{q.cursorId}))
+            </if>
+        </where>
+        ORDER BY a.create_time DESC, a.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!--
+      ============ 试验计划检索：主表 t_tvac_plan（别名 p） ============
+      试验件为 to-one 关联，JOIN 不会放大主记录；曲线点条件用 EXISTS。
+      确定性排序：p.create_time DESC, p.id DESC。
+    -->
+    <sql id="planConditions">
+        <include refid="dataScope"/>
+        <if test="q.planId != null">AND p.id = #{q.planId}</if>
+        <if test="q.planCode != null and q.planCode != ''">
+            AND p.plan_code = #{q.planCode}
+        </if>
+        <if test="q.planName != null and q.planName != ''">
+            AND p.plan_name LIKE CONCAT('%', #{q.planName}, '%')
+        </if>
+        <if test="q.planStatus != null and q.planStatus != ''">
+            AND p.status = #{q.planStatus}
+        </if>
+        <if test="q.planTimeFrom != null">AND p.plan_start_time &gt;= #{q.planTimeFrom}</if>
+        <if test="q.planTimeTo != null">AND p.plan_start_time &lt;= #{q.planTimeTo}</if>
+        <if test="q.createTimeFrom != null">AND p.create_time &gt;= #{q.createTimeFrom}</if>
+        <if test="q.createTimeTo != null">AND p.create_time &lt;= #{q.createTimeTo}</if>
+        <if test="q.articleId != null">AND p.article_id = #{q.articleId}</if>
+        <if test="q.articleCode != null and q.articleCode != ''">
+            AND a.article_code = #{q.articleCode}
+        </if>
+        <if test="q.articleName != null and q.articleName != ''">
+            AND a.article_name LIKE CONCAT('%', #{q.articleName}, '%')
+        </if>
+        <if test="q.targetModel != null and q.targetModel != ''">
+            AND a.target_model = #{q.targetModel}
+        </if>
+        <if test="q.batchNo != null and q.batchNo != ''">
+            AND a.batch_no = #{q.batchNo}
+        </if>
+        <if test="q.articleStatus != null and q.articleStatus != ''">
+            AND a.status = #{q.articleStatus}
+        </if>
+        <if test="(q.tempFromC != null) or (q.tempToC != null)
+              or (q.pressureFromPa != null) or (q.pressureToPa != null)
+              or (q.curveCycleNo != null)">
+            AND EXISTS (SELECT 1 FROM t_tvac_curve_point c
+                        WHERE c.plan_id = p.id
+                        <if test="q.curveCycleNo != null">
+                            AND c.cycle_no = #{q.curveCycleNo}
+                        </if>
+                        <if test="q.tempFromC != null">
+                            AND c.temperature_c &gt;= #{q.tempFromC}
+                        </if>
+                        <if test="q.tempToC != null">
+                            AND c.temperature_c &lt;= #{q.tempToC}
+                        </if>
+                        <if test="q.pressureFromPa != null">
+                            AND c.pressure_pa &gt;= #{q.pressureFromPa}
+                        </if>
+                        <if test="q.pressureToPa != null">
+                            AND c.pressure_pa &lt;= #{q.pressureToPa}
+                        </if>)
+        </if>
+    </sql>
+
+    <select id="countPlans" resultType="long">
+        SELECT COUNT(*) FROM t_tvac_plan p
+        JOIN t_tvac_article a ON a.id = p.article_id
+        <where><include refid="planConditions"/></where>
+    </select>
+
+    <select id="pagePlans" resultType="com.evops.vo.OperationSearchItemVo">
+        SELECT 'PLAN' AS object_type,
+               p.id, p.plan_code AS code, p.plan_name AS name, p.status,
+               a.tenant_id, p.create_time,
+               a.id AS article_id, a.article_code, a.article_name,
+               a.target_model, a.batch_no, a.status AS article_status,
+               p.id AS plan_id, p.plan_code, p.plan_name, p.status AS plan_status,
+               p.plan_start_time, p.plan_end_time, p.target_cycles,
+               CAST(NULL AS BIGINT) AS plan_count,
+               (SELECT COUNT(*) FROM t_tvac_curve_point c WHERE c.plan_id = p.id) AS curve_point_count,
+               (SELECT COUNT(*) FROM t_tvac_tm_frame f WHERE f.plan_id = p.id) AS frame_count,
+               (SELECT COUNT(*) FROM t_tvac_tm_frame f
+                 WHERE f.plan_id = p.id AND f.limit_flag &lt;&gt; 'NORMAL') AS abnormal_frame_count
+        FROM t_tvac_plan p
+        JOIN t_tvac_article a ON a.id = p.article_id
+        <where>
+            <include refid="planConditions"/>
+            <if test="q.cursorTime != null">
+                AND (p.create_time &lt; #{q.cursorTime}
+                     OR (p.create_time = #{q.cursorTime} AND p.id &lt; #{q.cursorId}))
+            </if>
+        </where>
+        ORDER BY p.create_time DESC, p.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!--
+      ============ 遥测帧按试验件分区聚合 ============
+      直接在帧表上 GROUP BY article_id；通道测量类型过滤用 EXISTS 半连接，
+      channelId 是帧表自身列（等值谓词，不产生 JOIN），帧数绝不被通道关联放大。
+    -->
+    <sql id="frameConditions">
+        <include refid="dataScope"/>
+        <if test="q.articleId != null">AND f.article_id = #{q.articleId}</if>
+        <if test="q.articleCode != null and q.articleCode != ''">
+            AND a.article_code = #{q.articleCode}
+        </if>
+        <if test="q.batchNo != null and q.batchNo != ''">
+            AND a.batch_no = #{q.batchNo}
+        </if>
+        <if test="q.planId != null">AND f.plan_id = #{q.planId}</if>
+        <if test="q.channelId != null">AND f.channel_id = #{q.channelId}</if>
+        <if test="q.measureType != null and q.measureType != ''">
+            AND EXISTS (SELECT 1 FROM t_tvac_channel ch
+                        WHERE ch.id = f.channel_id
+                          AND ch.measure_type = #{q.measureType})
+        </if>
+        <if test="q.limitFlag != null and q.limitFlag != ''">
+            AND f.limit_flag = #{q.limitFlag}
+        </if>
+        <if test="q.cycleFrom != null">AND f.cycle_no &gt;= #{q.cycleFrom}</if>
+        <if test="q.cycleTo != null">AND f.cycle_no &lt;= #{q.cycleTo}</if>
+    </sql>
+
+    <select id="countFrameGroups" resultType="long">
+        SELECT COUNT(*) FROM (
+            SELECT f.article_id
+            FROM t_tvac_tm_frame f
+            JOIN t_tvac_article a ON a.id = f.article_id
+            <where><include refid="frameConditions"/></where>
+            GROUP BY f.article_id
+        ) grp
+    </select>
+
+    <select id="pageFrameGroups" resultType="com.evops.vo.ArticleFrameStatsVo">
+        SELECT f.article_id AS article_id,
+               a.article_code, a.article_name, a.tenant_id,
+               COUNT(DISTINCT f.plan_id) AS plan_count,
+               COUNT(DISTINCT f.channel_id) AS channel_count,
+               MAX(f.cycle_no) AS max_cycle_no,
+               COUNT(*) AS total_frames,
+               SUM(CASE WHEN f.limit_flag &lt;&gt; 'NORMAL' THEN 1 ELSE 0 END) AS abnormal_frames,
+               MAX(f.eng_value) AS max_eng_value,
+               MIN(f.eng_value) AS min_eng_value
+        FROM t_tvac_tm_frame f
+        JOIN t_tvac_article a ON a.id = f.article_id
+        <where><include refid="frameConditions"/></where>
+        GROUP BY f.article_id, a.article_code, a.article_name, a.tenant_id
+        ORDER BY f.article_id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+</mapper>

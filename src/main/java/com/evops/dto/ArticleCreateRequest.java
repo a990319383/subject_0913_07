@@ -17,5 +17,8 @@ public class ArticleCreateRequest {
     @NotBlank(message = "批次号不能为空")
     private String batchNo;
 
+    /** 归属租户：仅平台系统账号可显式指定；租户账号建档自动归属本租户 */
+    private Long tenantId;
+
     private String remark;
 }

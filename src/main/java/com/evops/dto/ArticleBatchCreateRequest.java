@@ -18,6 +18,9 @@ public class ArticleBatchCreateRequest {
 
     private String targetModel;
 
+    /** 归属租户：仅平台系统账号可显式指定；租户账号建档自动归属本租户 */
+    private Long tenantId;
+
     @NotEmpty(message = "批次内试验件不能为空")
     @Valid
     private List<Item> articles;

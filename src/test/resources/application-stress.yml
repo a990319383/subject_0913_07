@@ -1,0 +1,7 @@
+# 压测专用独立内存库，避免与功能测试的上下文/数据互相干扰
+spring:
+  datasource:
+    url: jdbc:h2:mem:evops-stress;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
