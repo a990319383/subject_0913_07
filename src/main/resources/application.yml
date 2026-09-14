@@ -2,6 +2,11 @@ server:
   port: 8080
 
 spring:
+  servlet:
+    multipart:
+      # 观测数据 CSV 单批 ≥50,000 行，放宽上传限制
+      max-file-size: 200MB
+      max-request-size: 210MB
   application:
     name: evops-base
   profiles:

@@ -26,15 +26,18 @@ public class TvacTmFrameService {
     private final TvacPlanMapper planMapper;
     private final TvacChannelMapper channelMapper;
     private final TvacReportMapper reportMapper;
+    private final FrameLimitJudge limitJudge;
 
     public TvacTmFrameService(TvacTmFrameMapper frameMapper,
                               TvacPlanMapper planMapper,
                               TvacChannelMapper channelMapper,
-                              TvacReportMapper reportMapper) {
+                              TvacReportMapper reportMapper,
+                              FrameLimitJudge limitJudge) {
         this.frameMapper = frameMapper;
         this.planMapper = planMapper;
         this.channelMapper = channelMapper;
         this.reportMapper = reportMapper;
+        this.limitJudge = limitJudge;
     }
 
     /** 录入一帧遥测：校验计划/通道归属与状态，按通道限界自动打越限标记 */
@@ -69,7 +72,7 @@ public class TvacTmFrameService {
         frame.setFrameTime(req.getFrameTime() == null ? LocalDateTime.now() : req.getFrameTime());
         frame.setRawValue(req.getRawValue());
         frame.setEngValue(req.getEngValue());
-        frame.setLimitFlag(judgeLimit(req.getEngValue(), channel));
+        frame.setLimitFlag(limitJudge.judge(req.getEngValue(), channel));
         frameMapper.insert(frame);
         return frame;
     }
@@ -82,19 +85,6 @@ public class TvacTmFrameService {
             saved.add(create(req));
         }
         return saved;
-    }
-
-    private String judgeLimit(BigDecimal value, TvacChannel channel) {
-        if (value == null) {
-            return TvacConst.LimitFlag.NORMAL;
-        }
-        if (channel.getUpperLimit() != null && value.compareTo(channel.getUpperLimit()) > 0) {
-            return TvacConst.LimitFlag.HIGH;
-        }
-        if (channel.getLowerLimit() != null && value.compareTo(channel.getLowerLimit()) < 0) {
-            return TvacConst.LimitFlag.LOW;
-        }
-        return TvacConst.LimitFlag.NORMAL;
     }
 
     private void ensureNotPosted(Long planId) {

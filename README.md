@@ -99,3 +99,41 @@
 `POST /api/tvac/tenancy/tenants`、`POST /api/tvac/tenancy/users`、
 `POST /api/tvac/tenancy/grants`、`GET /api/tvac/tenancy/users/{userId}/grants`。
 
+## 观测数据 CSV 批量导入（tvac-3）
+
+表头固定 8 列（首列 `记录类型` 决定行语义）：
+
+```
+记录类型,对象编号,观测时间,温压曲线,遥测帧,循环次数,判读结论,来源设备
+```
+
+- `CURVE`：温压曲线列 `计划编号;偏移秒;温度[C/F/K];压力[Pa/kPa/MPa]`，单位自动归一化到 ℃/Pa；
+- `FRAME`：遥测帧列 `计划编号|通道编号|帧号|原始报文|工程值`，帧号为业务键，按通道限界自动打标；
+- `REPORT`：对象编号=计划编号，判读结论列为 `QUALIFIED/UNQUALIFIED/CONDITIONAL`，
+  自动汇总循环次数/帧数/异常帧/温压极值后落判读报告。
+
+批量保证（`ObservationImportService`）：
+
+- 文件 SHA-256 校验和唯一：重传同一文件直接返回原批次（`idempotentHit=true`），不重复落库；
+  归一化台账 `t_tvac_observation` 以 `(record_type, 业务键)` 为第二道幂等防线；
+- 默认 5000 行/片（50,000 行切 10 片），每片独立事务（`REQUIRES_NEW`）、独立 CRC32 校验和，
+  分片报文落库；系统失败分片保持 `FAILED`，可对原报文重试，业务键幂等保证重试不重复落数据；
+- 逐行隔离：合法/重复/缺列/坏数值混合时单行失败只写错误明细，不回滚整批；
+  逐行返回 `SUCCESS`（新增）/`UPDATED`（覆盖）/`FAILED`，错误明细保留原始行号、字段、原值、原因；
+- 已验收/已落账的判读报告对应曲线/帧/结论一律拒绝覆盖（`ObservationLockGuard`）。
+
+接口（HTTP Basic，bootstrap）：
+`POST /api/tvac/observations/import`（multipart 文件，可选 `shardSize`）、
+`POST /api/tvac/observations/import-text`、
+`GET /api/tvac/observations/batches/{batchId}`、
+`POST /api/tvac/observations/batches/{batchId}/shards/{shardNo}/retry`。
+
+地面站二进制解码结果分片重组（`FrameReassemblyService`）：
+
+- 一个带帧号的逻辑帧按通道拆片，`receive_seq` 记录到达顺序，按 `(会话,通道,片序号)` 去重，
+  乱序到达后按通道/片序确定性重组（`POST /api/tvac/frame-sessions`、`.../pieces`、`.../{key}/assemble`）；
+- 每片到片复算 CRC32 与客户端校验和比对；重复片同报文幂等丢弃，坏片可用正确报文重发修复；
+- 单通道坏帧（CRC 不符/通道停用/归属错误）标记 `BAD` 隔离，不影响其他通道片落帧。
+
+测试：`ObservationImportIntegrationTest`（独立 imptest 内存库），含 50,000 行混合分片、
+文件/业务键幂等、失败分片重试、验收/落账保护、乱序帧与单通道坏帧隔离。

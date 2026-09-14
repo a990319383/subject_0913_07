@@ -30,4 +30,6 @@ public class TvacTmFrame extends BaseEntity {
     private BigDecimal engValue;
     /** 越限标记：NORMAL/HIGH/LOW */
     private String limitFlag;
+    /** 来源地面站设备编号 */
+    private String sourceDevice;
 }

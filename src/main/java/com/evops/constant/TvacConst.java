@@ -66,4 +66,60 @@ public final class TvacConst {
         private Conclusion() {
         }
     }
+
+    /** CSV 观测记录类型 */
+    public static final class RecordType {
+        /** 温压曲线点 */
+        public static final String CURVE = "CURVE";
+        /** 遥测帧 */
+        public static final String FRAME = "FRAME";
+        /** 判读结论 */
+        public static final String REPORT = "REPORT";
+        private RecordType() {
+        }
+    }
+
+    /** 逐行导入结果 */
+    public static final class ImportResult {
+        /** 新增成功 */
+        public static final String SUCCESS = "SUCCESS";
+        /** 命中业务键且未锁定，覆盖更新 */
+        public static final String UPDATED = "UPDATED";
+        /** 校验/锁定失败，已隔离 */
+        public static final String FAILED = "FAILED";
+        private ImportResult() {
+        }
+    }
+
+    /** 导入分片状态 */
+    public static final class ShardStatus {
+        public static final String PENDING = "PENDING";
+        public static final String PROCESSING = "PROCESSING";
+        public static final String SUCCESS = "SUCCESS";
+        /** 系统异常中断（区别于逐行业务失败），可对该片重试 */
+        public static final String FAILED = "FAILED";
+        private ShardStatus() {
+        }
+    }
+
+    /** 导入批次状态 */
+    public static final class BatchStatus {
+        public static final String PROCESSING = "PROCESSING";
+        /** 全部分片处理完毕（允许存在逐行失败） */
+        public static final String COMPLETED = "COMPLETED";
+        private BatchStatus() {
+        }
+    }
+
+    /** 二进制解码帧分片状态 */
+    public static final class PieceStatus {
+        /** 分片校验和通过 */
+        public static final String VERIFIED = "VERIFIED";
+        /** 单通道坏帧：校验和不符或解码失败，隔离不影响其他通道 */
+        public static final String BAD = "BAD";
+        /** 地面站重复发送，校验一致，幂等丢弃 */
+        public static final String DUPLICATED = "DUPLICATED";
+        private PieceStatus() {
+        }
+    }
 }
