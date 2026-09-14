@@ -4,12 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.evops.common.BusinessException;
 import com.evops.constant.TvacConst;
 import com.evops.dto.ReportAcceptRequest;
+import com.evops.dto.ReportBindCalcRequest;
 import com.evops.dto.ReportCreateRequest;
 import com.evops.dto.ReportJudgeRequest;
 import com.evops.entity.TvacArticle;
+import com.evops.entity.TvacCalcRun;
 import com.evops.entity.TvacPlan;
 import com.evops.entity.TvacReport;
 import com.evops.mapper.TvacArticleMapper;
+import com.evops.mapper.TvacCalcRunMapper;
 import com.evops.mapper.TvacCurvePointMapper;
 import com.evops.mapper.TvacPlanMapper;
 import com.evops.mapper.TvacReportMapper;
@@ -33,17 +36,20 @@ public class TvacReportService {
     private final TvacArticleMapper articleMapper;
     private final TvacCurvePointMapper curvePointMapper;
     private final TvacTmFrameMapper frameMapper;
+    private final TvacCalcRunMapper calcRunMapper;
 
     public TvacReportService(TvacReportMapper reportMapper,
                              TvacPlanMapper planMapper,
                              TvacArticleMapper articleMapper,
                              TvacCurvePointMapper curvePointMapper,
-                             TvacTmFrameMapper frameMapper) {
+                             TvacTmFrameMapper frameMapper,
+                             TvacCalcRunMapper calcRunMapper) {
         this.reportMapper = reportMapper;
         this.planMapper = planMapper;
         this.articleMapper = articleMapper;
         this.curvePointMapper = curvePointMapper;
         this.frameMapper = frameMapper;
+        this.calcRunMapper = calcRunMapper;
     }
 
     /** 生成判读报告（PENDING）：一份计划至多一份，且计划须已完成 */
@@ -140,6 +146,30 @@ public class TvacReportService {
         if (req.getRemark() != null) {
             report.setRemark(req.getRemark());
         }
+        reportMapper.updateById(report);
+        return report;
+    }
+
+    /**
+     * 绑定区间计算批次：报告随判读引用该批次采用的规则版本快照。
+     * 批次对象（试验件）须与报告计划一致；报告验收/落账（签发）后绑定锁定，
+     * 规则换版只产生新批次，不污染已签发报告引用的历史快照。
+     */
+    public TvacReport bindCalc(Long id, ReportBindCalcRequest req) {
+        TvacReport report = getById(id);
+        if (report.getAcceptedTime() != null || report.getPostedTime() != null) {
+            throw BusinessException.of("报告已验收或已落账，规则计算绑定锁定，不能换绑");
+        }
+        TvacCalcRun run = calcRunMapper.selectById(req.getRunId());
+        if (run == null) {
+            throw BusinessException.of("计算批次不存在: " + req.getRunId());
+        }
+        TvacPlan plan = planMapper.selectById(report.getPlanId());
+        if (plan == null || !run.getArticleId().equals(plan.getArticleId())) {
+            throw BusinessException.of("计算批次与报告计划的试验件不一致，不能绑定");
+        }
+        report.setCalcRunId(run.getId());
+        report.setRuleVersionId(run.getVersionId());
         reportMapper.updateById(report);
         return report;
     }

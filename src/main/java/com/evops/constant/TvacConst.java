@@ -122,4 +122,36 @@ public final class TvacConst {
         private PieceStatus() {
         }
     }
+
+    /** 时序判读规则版本状态 */
+    public static final class RuleVersionStatus {
+        /** 草稿：区间可改，未启用 */
+        public static final String DRAFT = "DRAFT";
+        /** 启用：区间冻结，不能原地修改；同规则集仅一个启用版 */
+        public static final String ENABLED = "ENABLED";
+        /** 已停用：历史版本，区间仍冻结，供历史结果快照追溯 */
+        public static final String DISABLED = "DISABLED";
+        private RuleVersionStatus() {
+        }
+    }
+
+    /** 业务区间（规则）类型 */
+    public static final class BandType {
+        /** 峰值区间 */
+        public static final String PEAK = "PEAK";
+        /** 平段区间 */
+        public static final String FLAT = "FLAT";
+        /** 谷值区间 */
+        public static final String VALLEY = "VALLEY";
+        private BandType() {
+        }
+    }
+
+    /** 区间计算批次状态 */
+    public static final class CalcRunStatus {
+        /** 计算完成（同步计算，落库即完成） */
+        public static final String DONE = "DONE";
+        private CalcRunStatus() {
+        }
+    }
 }

@@ -2,6 +2,7 @@ package com.evops.controller;
 
 import com.evops.common.ApiResponse;
 import com.evops.dto.ReportAcceptRequest;
+import com.evops.dto.ReportBindCalcRequest;
 import com.evops.dto.ReportCreateRequest;
 import com.evops.dto.ReportJudgeRequest;
 import com.evops.entity.TvacReport;
@@ -59,6 +60,13 @@ public class TvacReportController {
     public ApiResponse<TvacReport> judge(@PathVariable Long id,
                                          @Valid @RequestBody ReportJudgeRequest req) {
         return ApiResponse.ok(reportService.judge(id, req));
+    }
+
+    /** 绑定区间计算批次（验收/落账后锁定，换版不污染已签发报告） */
+    @PutMapping("/{id}/bind-calc")
+    public ApiResponse<TvacReport> bindCalc(@PathVariable Long id,
+                                            @Valid @RequestBody ReportBindCalcRequest req) {
+        return ApiResponse.ok(reportService.bindCalc(id, req));
     }
 
     /** 验收 */

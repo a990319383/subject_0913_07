@@ -32,5 +32,9 @@ public class TvacReport extends BaseEntity {
     private String acceptedBy;
     private LocalDateTime acceptedTime;
     private LocalDateTime postedTime;
+    /** 绑定的区间计算批次（判读依据的规则计算结果快照） */
+    private Long calcRunId;
+    /** 绑定时采用的规则版本（随批次冗余留痕） */
+    private Long ruleVersionId;
     private String remark;
 }

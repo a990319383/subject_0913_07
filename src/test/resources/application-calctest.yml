@@ -1,0 +1,7 @@
+# 区间计算并发测试专用内存库（独立库、真实提交、不回滚）
+spring:
+  datasource:
+    url: jdbc:h2:mem:evops-calctest;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver

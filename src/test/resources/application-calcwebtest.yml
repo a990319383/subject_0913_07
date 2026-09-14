@@ -1,0 +1,8 @@
+# 规则/计算 HTTP 端到端专用内存库（与 OperationWebIntegrationTest 的 webtest 库隔离，
+# 避免全量计数断言互相干扰）
+spring:
+  datasource:
+    url: jdbc:h2:mem:evops-calcwebtest;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
